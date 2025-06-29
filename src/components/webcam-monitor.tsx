@@ -22,6 +22,7 @@ export function WebcamMonitor({ onIncident }: WebcamMonitorProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const isMounted = useRef(true);
 
   const stopMonitoring = useCallback(() => {
     if (intervalRef.current) {
@@ -32,9 +33,19 @@ export function WebcamMonitor({ onIncident }: WebcamMonitorProps) {
       stream.getTracks().forEach((track) => track.stop());
       videoRef.current.srcObject = null;
     }
-    setIsMonitoring(false);
-    setIsLoading(false);
+    if (isMounted.current) {
+      setIsMonitoring(false);
+      setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      stopMonitoring();
+    };
+  }, [stopMonitoring]);
 
   const startMonitoring = async () => {
     setError(null);
@@ -42,33 +53,42 @@ export function WebcamMonitor({ onIncident }: WebcamMonitorProps) {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
-        if (videoRef.current) {
+        if (videoRef.current && isMounted.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.onloadedmetadata = () => {
-            setIsMonitoring(true);
-            setIsLoading(false);
+            if (isMounted.current) {
+              setIsMonitoring(true);
+              setIsLoading(false);
+            }
           };
+        } else {
+            // If component unmounted while waiting for stream, stop the tracks
+            stream.getTracks().forEach((track) => track.stop());
         }
       } catch (err) {
-        console.error("Error accessing webcam:", err);
-        const errorMessage = "Could not access webcam. Please check permissions.";
+        if (isMounted.current) {
+            console.error("Error accessing webcam:", err);
+            const errorMessage = "Could not access webcam. Please check permissions.";
+            setError(errorMessage);
+            toast({
+              variant: "destructive",
+              title: "Webcam Error",
+              description: errorMessage,
+            });
+            setIsLoading(false);
+        }
+      }
+    } else {
+      if (isMounted.current) {
+        const errorMessage = "Your browser does not support webcam access.";
         setError(errorMessage);
         toast({
           variant: "destructive",
-          title: "Webcam Error",
+          title: "Unsupported Browser",
           description: errorMessage,
         });
         setIsLoading(false);
       }
-    } else {
-      const errorMessage = "Your browser does not support webcam access.";
-      setError(errorMessage);
-      toast({
-        variant: "destructive",
-        title: "Unsupported Browser",
-        description: errorMessage,
-      });
-      setIsLoading(false);
     }
   };
 
@@ -84,7 +104,7 @@ export function WebcamMonitor({ onIncident }: WebcamMonitorProps) {
         const dataUri = canvas.toDataURL("image/jpeg");
         try {
           const result = await detectSuspiciousActivity({ webcamFeedDataUri: dataUri });
-          if (result.isSuspicious) {
+          if (result.isSuspicious && isMounted.current) {
             onIncident(result);
           }
         } catch (e) {
@@ -104,10 +124,6 @@ export function WebcamMonitor({ onIncident }: WebcamMonitorProps) {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [isMonitoring, captureAndAnalyze]);
-  
-  useEffect(() => {
-    return () => stopMonitoring();
-  }, [stopMonitoring]);
 
   return (
     <Card className="overflow-hidden shadow-lg">

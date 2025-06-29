@@ -11,7 +11,6 @@ import type { DetectSuspiciousActivityOutput } from "@/ai/flows/detect-suspiciou
 
 export default function Home() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [overallSuspicion, setOverallSuspicion] = useState(0);
 
   const handleNewIncident = (incidentData: Omit<DetectSuspiciousActivityOutput, 'isSuspicious'>) => {
     const newIncident: Incident = {
@@ -21,17 +20,13 @@ export default function Home() {
       level: incidentData.suspicionLevel,
     };
     
-    setIncidents((prevIncidents) => {
-      const updatedIncidents = [newIncident, ...prevIncidents];
-
-      // Recalculate overall suspicion level
-      const totalLevel = updatedIncidents.reduce((sum, inc) => sum + inc.level, 0);
-      const newOverallSuspicion = updatedIncidents.length > 0 ? totalLevel / updatedIncidents.length : 0;
-      setOverallSuspicion(newOverallSuspicion);
-
-      return updatedIncidents;
-    });
+    setIncidents((prevIncidents) => [newIncident, ...prevIncidents]);
   };
+
+  const overallSuspicion =
+    incidents.length > 0
+      ? incidents.reduce((sum, inc) => sum + inc.level, 0) / incidents.length
+      : 0;
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
